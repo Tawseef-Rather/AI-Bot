@@ -1,16 +1,21 @@
-const API_URL = "https://openrouter.ai/api/v1/chat/completions";
 const STORAGE_KEYS = {
+  apiUrl: "ai_chat_api_url",
   apiKey: "ai_chat_api_key",
+  authHeaderName: "ai_chat_auth_header_name",
+  authHeaderPrefix: "ai_chat_auth_header_prefix",
   model: "ai_chat_model",
   messages: "ai_chat_messages",
 };
 
 const DEFAULTS = {
+  apiUrl: "https://openrouter.ai/api/v1/chat/completions",
+  authHeaderName: "Authorization",
+  authHeaderPrefix: "Bearer ",
   model: "openrouter/free",
 };
 const MAX_SAVED_MESSAGES = 200;
 const REQUEST_TIMEOUT_MS = 90000;
-const PERMANENT_SYSTEM_PROMPT = "You are Tawseef. A helpful, concise assistant.You provide descriptive responses.";
+const PERMANENT_SYSTEM_PROMPT = "You are Tawseef. A helpful, concise assistant.You give very long and descriptive responses.";
 
 const messageTemplate = document.getElementById("messageTemplate");
 const appShell = document.getElementById("appShell");
@@ -19,8 +24,11 @@ const composerForm = document.getElementById("composerForm");
 const messageInput = document.getElementById("messageInput");
 const sendBtn = document.getElementById("sendBtn");
 const statusText = document.getElementById("statusText");
+const apiUrlInput = document.getElementById("apiUrl");
 const apiKeyInput = document.getElementById("apiKey");
-const modelSelect = document.getElementById("model");
+const authHeaderNameInput = document.getElementById("authHeaderName");
+const authHeaderPrefixInput = document.getElementById("authHeaderPrefix");
+const modelInput = document.getElementById("model");
 const saveSettingsBtn = document.getElementById("saveSettingsBtn");
 const clearChatBtn = document.getElementById("clearChatBtn");
 const openSidebarBtn = document.getElementById("openSidebarBtn");
@@ -47,17 +55,25 @@ function saveMessages() {
 }
 
 function loadSettings() {
-  apiKeyInput.value = localStorage.getItem(STORAGE_KEYS.apiKey) || "";
-  const savedModel = localStorage.getItem(STORAGE_KEYS.model) || DEFAULTS.model;
-  modelSelect.value = savedModel;
-  if (!modelSelect.value) {
-    modelSelect.value = DEFAULTS.model;
-  }
+  const savedApiUrl = localStorage.getItem(STORAGE_KEYS.apiUrl);
+  const savedApiKey = localStorage.getItem(STORAGE_KEYS.apiKey);
+  const savedAuthHeaderName = localStorage.getItem(STORAGE_KEYS.authHeaderName);
+  const savedAuthHeaderPrefix = localStorage.getItem(STORAGE_KEYS.authHeaderPrefix);
+  const savedModel = localStorage.getItem(STORAGE_KEYS.model);
+
+  apiUrlInput.value = savedApiUrl === null ? DEFAULTS.apiUrl : savedApiUrl;
+  apiKeyInput.value = savedApiKey === null ? "" : savedApiKey;
+  authHeaderNameInput.value = savedAuthHeaderName === null ? DEFAULTS.authHeaderName : savedAuthHeaderName;
+  authHeaderPrefixInput.value = savedAuthHeaderPrefix === null ? DEFAULTS.authHeaderPrefix : savedAuthHeaderPrefix;
+  modelInput.value = savedModel === null ? DEFAULTS.model : savedModel;
 }
 
 function saveSettings() {
+  localStorage.setItem(STORAGE_KEYS.apiUrl, (apiUrlInput.value || "").trim() || DEFAULTS.apiUrl);
   localStorage.setItem(STORAGE_KEYS.apiKey, apiKeyInput.value.trim());
-  localStorage.setItem(STORAGE_KEYS.model, modelSelect.value);
+  localStorage.setItem(STORAGE_KEYS.authHeaderName, (authHeaderNameInput.value || "").trim());
+  localStorage.setItem(STORAGE_KEYS.authHeaderPrefix, authHeaderPrefixInput.value ?? DEFAULTS.authHeaderPrefix);
+  localStorage.setItem(STORAGE_KEYS.model, (modelInput.value || "").trim() || DEFAULTS.model);
   setStatus("Settings saved");
 }
 
@@ -97,7 +113,7 @@ function loadMessages() {
 function addAssistantGreeting() {
   const greeting = {
     role: "assistant",
-    content: "Hello. I am ready. Add your API key in the left panel, then ask anything.",
+    content: "Hello. Add API URL, model ID, and key in settings, then start chatting.",
   };
   messages.push(greeting);
   renderMessage(greeting);
@@ -157,6 +173,16 @@ function autoResizeInput() {
   messageInput.style.height = `${Math.min(messageInput.scrollHeight, 180)}px`;
 }
 
+function getRequestConfig() {
+  return {
+    apiUrl: (apiUrlInput.value || "").trim() || DEFAULTS.apiUrl,
+    apiKey: (apiKeyInput.value || "").trim(),
+    authHeaderName: (authHeaderNameInput.value || "").trim(),
+    authHeaderPrefix: authHeaderPrefixInput.value ?? DEFAULTS.authHeaderPrefix,
+    model: (modelInput.value || "").trim(),
+  };
+}
+
 function buildApiMessages(nextUserMessage) {
   const systemPrompt = PERMANENT_SYSTEM_PROMPT;
   const history = messages.slice(-20);
@@ -174,15 +200,30 @@ function buildApiMessages(nextUserMessage) {
   return payloadMessages;
 }
 
-async function streamCompletion({ apiKey, model, payloadMessages, onToken, controller }) {
+async function streamCompletion({
+  apiUrl,
+  apiKey,
+  authHeaderName,
+  authHeaderPrefix,
+  model,
+  payloadMessages,
+  onToken,
+  controller,
+}) {
   const headers = {
-    Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
-    "X-Title": "AI Chat App",
   };
 
-  if (location.origin && location.origin.startsWith("http")) {
-    headers["HTTP-Referer"] = location.origin;
+  if (apiKey && authHeaderName) {
+    headers[authHeaderName] = `${authHeaderPrefix || ""}${apiKey}`;
+  }
+
+  // OpenRouter optional metadata headers.
+  if (apiUrl.includes("openrouter.ai")) {
+    headers["X-Title"] = "AI Chat App";
+    if (location.origin && location.origin.startsWith("http")) {
+      headers["HTTP-Referer"] = location.origin;
+    }
   }
 
   const timeoutId = setTimeout(() => {
@@ -192,7 +233,7 @@ async function streamCompletion({ apiKey, model, payloadMessages, onToken, contr
   }, REQUEST_TIMEOUT_MS);
 
   try {
-    const response = await fetch(API_URL, {
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers,
       signal: controller.signal,
@@ -290,14 +331,36 @@ async function handleSend(event) {
     return;
   }
 
-  const apiKey = apiKeyInput.value.trim();
-  if (!apiKey) {
+  const {
+    apiUrl,
+    apiKey,
+    authHeaderName,
+    authHeaderPrefix,
+    model,
+  } = getRequestConfig();
+
+  if (!apiUrl) {
+    setStatus("Add API URL first");
+    apiUrlInput.focus();
+    return;
+  }
+
+  if (!model) {
+    setStatus("Add model ID first");
+    modelInput.focus();
+    return;
+  }
+
+  if (authHeaderName && !apiKey) {
     setStatus("Add API key first");
     apiKeyInput.focus();
     return;
   }
 
-  const model = modelSelect.value;
+  // Persist latest settings before request.
+  saveSettings();
+  closeSidebar();
+
   const payloadMessages = buildApiMessages(userInput);
 
   const userMessage = { role: "user", content: userInput };
@@ -318,7 +381,10 @@ async function handleSend(event) {
 
   try {
     await streamCompletion({
+      apiUrl,
       apiKey,
+      authHeaderName,
+      authHeaderPrefix,
       model,
       payloadMessages,
       controller,
@@ -407,7 +473,10 @@ function init() {
   messageInput.addEventListener("input", autoResizeInput);
   messageInput.addEventListener("keydown", handleComposerKeydown);
 
-  modelSelect.addEventListener("change", saveSettings);
+  apiUrlInput.addEventListener("change", saveSettings);
+  authHeaderNameInput.addEventListener("change", saveSettings);
+  authHeaderPrefixInput.addEventListener("change", saveSettings);
+  modelInput.addEventListener("change", saveSettings);
   apiKeyInput.addEventListener("change", saveSettings);
   openSidebarBtn.addEventListener("click", openSidebar);
   closeSidebarBtn.addEventListener("click", closeSidebar);
