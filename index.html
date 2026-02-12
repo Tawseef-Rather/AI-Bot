@@ -14,23 +14,33 @@
     <aside class="sidebar" id="sidebar">
       <div class="sidebar-top">
         <div>
-          <h1>AI Chat</h1>
-          <p class="muted">ChatGPT-style app with a free API router.</p>
+          <h1>ChatTAWSEEF</h1>
+          <p class="muted">Chat with ChatTAWSEEF.</p>
         </div>
         <button id="closeSidebarBtn" type="button" class="btn btn-ghost sidebar-toggle">Close</button>
       </div>
 
       <div class="settings-card">
-        <label for="apiKey">OpenRouter API Key</label>
-        <input id="apiKey" type="password" placeholder="sk-or-..." autocomplete="off" />
+        <label for="apiUrl">API URL</label>
+        <input
+          id="apiUrl"
+          type="text"
+          placeholder="https://provider.com/v1/chat/completions"
+          autocomplete="off"
+        />
+
+        <label for="apiKey">API Key</label>
+        <input id="apiKey" type="password" placeholder="Enter provider key" autocomplete="off" />
         <p class="hint">Stored only in your browser.</p>
 
-        <label for="model">Model</label>
-        <select id="model">
-          <option value="openrouter/free">openrouter/free (recommended)</option>
-          <option value="meta-llama/llama-3.2-3b-instruct:free">llama-3.2-3b:free</option>
-          <option value="deepseek/deepseek-r1:free">deepseek-r1:free</option>
-        </select>
+        <label for="authHeaderName">Auth Header Name</label>
+        <input id="authHeaderName" type="text" placeholder="Authorization" autocomplete="off" />
+
+        <label for="authHeaderPrefix">Auth Header Prefix</label>
+        <input id="authHeaderPrefix" type="text" placeholder="Bearer " autocomplete="off" />
+
+        <label for="model">Model ID</label>
+        <input id="model" type="text" placeholder="openrouter/free or any model name" autocomplete="off" />
       </div>
 
       <div class="actions">
@@ -39,8 +49,7 @@
       </div>
 
       <p class="muted tiny">
-        Need a key? Create one at
-        <a href="https://openrouter.ai/keys" target="_blank" rel="noopener noreferrer">openrouter.ai/keys</a>.
+        Works with OpenAI-compatible chat APIs from different providers.
       </p>
     </aside>
     <button id="sidebarOverlay" class="sidebar-overlay" type="button" aria-label="Close settings"></button>
